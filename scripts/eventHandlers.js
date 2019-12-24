@@ -184,6 +184,11 @@ function login() {
      //No data for this user -- create empty data
      data[thisUser] = {"rounds": {}, "roundCount": 0}; 
      localStorage.setItem("speedgolfUserData",JSON.stringify(data));
+   } else {
+     //There is data for this user; add it to the "My Rounds" table
+     for (const round in data[thisUser].rounds) {
+       addToOrUpdateRoundTable(true,data[thisUser].rounds[round].roundNum);
+     } 
    }
  }
 }
@@ -226,7 +231,43 @@ function clearRoundForm() {
   document.getElementById("roundNotes").value = "";
 }
 
+//fillRoundForm -- When the user chooses to view/edit an existing round, we need
+//to fill the round form with the corresponding round data and provide the
+//option to update the data
+function fillRoundForm(round) {
+  document.getElementById("roundDate").value = round.date;
+  document.getElementById("roundCourse").value = round.course;
+  document.getElementById("roundType").value = round.type;
+  document.getElementById("roundHoles").value = round.numHoles;
+  document.getElementById("roundStrokes").value = round.strokes;
+  document.getElementById("roundMinutes").value = round.minutes;
+  document.getElementById("roundSeconds").value = round.seconds;
+  document.getElementById("roundSGS").value = round.SGS;
+  document.getElementById("roundNotes").value = round.notes;
+}
 
+//transitionToLockedPage: Take the user to a locked page that is subsidiary to
+//the main mode page. The new page is identified by lockedPageId and should have
+//the title lockedPageTitle. Note: Any other tweaks to the locked page (e.g., 
+//changing of button labels or hiding/showing of input fields and controls) must
+//be done manually before or after calling this function.
+function transitionToLockedPage(lockedPageId, lockedPageTitle) {
+  //Swap pages:
+  document.getElementById(mode + "MainDiv").style.display = "none";
+  document.getElementById(lockedPageId).style.display = "block";
+  //Change page title:
+  document.getElementById("topBarTitle").textContent = lockedPageTitle;
+  //Set pageLocked to true, thus indicating that we're on a page that may only
+  //be exited by clicking on the left arrow at top left
+  pageLocked = true;
+  //When pageLocked is true, the menu  icon is the left arrow
+  document.getElementById("menuBtnIcon").classList.remove("fa-times");
+  document.getElementById("menuBtnIcon").classList.remove("fa-bars");
+  document.getElementById("menuBtnIcon").classList.add("fa-arrow-left");
+  //When pageLocked is true, the bottom bar buttons are disabled
+  document.getElementById("bottomBar").classList.add("disabledButton");
+ }
+ 
 //saveRoundData -- Callback function called from logRoundForm's submit handler.
 //Stops the spinner and then saves the entered round data to local storage.
 function saveRoundData() {
@@ -238,15 +279,11 @@ function saveRoundData() {
   let thisUser = localStorage.getItem("userName");
   let data = JSON.parse(localStorage.getItem("speedgolfUserData"));
    
-    //increment roundCount since we're adding a new round
-  data[thisUser].roundCount++;
-
-  //Initialize empty JavaScript object to store this new round
+  //Initialize empty JavaScript object to store new or updated round
   let thisRound = {}; //iniitalize empty object for this round
   let temp; //temporary value for storying DOM elements as needed
 
   //Store the data
-  thisRound.roundNum = data[thisUser].roundCount;
   thisRound.date = document.getElementById("roundDate").value; //round date
   thisRound.course = document.getElementById("roundCourse").value;
   temp = document.getElementById("roundType");
@@ -259,22 +296,73 @@ function saveRoundData() {
   thisRound.SGS = document.getElementById("roundSGS").value;
   thisRound.notes = document.getElementById("roundNotes").value;
 
+  //Determine whether we're saving new or editing existing round, saving accordingly
+  let submitBtnLabel = document.getElementById("submitBtnLabel").textContent;
+  let addNew;
+
+  if (submitBtnLabel == "Save Round Data") {
+    //Adding new round
+    addNew = true;
+    //Add 1 to roundCount, setting thisRound's roundNum to that value
+    thisRound.roundNum = ++(data[thisUser].roundCount);
+    data[thisUser].rounds[thisRound.roundNum] = thisRound; //add to local storage 
+  } else {
+    //Editing existing round
+    addNew = false;
+    //Grab index of round being edited from localStorage. It was set in editRound()
+    thisRound.roundNum = Number(localStorage.getItem("roundIndex")); 
+  }
+
   //Add this round to associative array of rounds
-  data[thisUser].rounds[data[thisUser].roundCount] = thisRound;
+  data[thisUser].rounds[thisRound.roundNum] = thisRound;
 
   //Commit updated user data to app data in local storage
   localStorage.setItem("speedgolfUserData",JSON.stringify(data));
-  
-  //Show alert box with current state of speedgolfUserData for debugging purposes
-  data = localStorage.getItem('speedgolfUserData');
-  alert("speedgolfUserData: " +  data);
 
   //Go back to "My Rounds" page by programmatically clicking the menu button
   document.getElementById("menuBtn").click();
 
   //Clear form to ready for next use
- clearRoundForm();
+  clearRoundForm();
+
+  //Add to or update "My Rounds" table
+  addToOrUpdateRoundTable(addNew, thisRound.roundNum);
+
 }
+
+//addToOrUpdateRoundTable -- Helper function that adds a new round with unique index
+//roundIndex to the "My Rounds" table. The round is a "condensed view" that
+//shows only the date, course and score for the round, together with buttons to
+//view/edit the detailed round data and delete the round data.
+function addToOrUpdateRoundTable(add, roundIndex) {
+  let data = JSON.parse(localStorage.getItem("speedgolfUserData"));
+  let user = localStorage.getItem("userName");
+  let roundData = data[user].rounds[roundIndex]; //the round data to add/edit
+  let roundsTable = document.getElementById("myRoundsTable");
+  let roundRow;
+  if (add) { //add new row
+    //Test whether table is empty
+    if (roundsTable.rows[1].innerHTML.includes ("colspan")) {
+      //empty table! Need to remove this row before adding new one
+      roundsTable.deleteRow(1);
+     }
+     roundRow = roundsTable.insertRow(1); //insert new row
+     roundRow.id = "r-" + roundIndex; //set id of this row so we can edit/delete later per user input
+  } else { //update existing row
+    roundRow = document.getElementById("r-" + roundIndex);
+  }
+  //Add/update row with five cols to table
+  roundRow.innerHTML = "<td>" + roundData.date + "</td><td>" +
+   roundData.course + "</td><td>" + roundData.SGS + 
+   " (" + roundData.strokes +
+   " in " + roundData.minutes + ":" + roundData.seconds + 
+   ")</td>" +
+   "<td><button onclick='editRound(" + roundIndex + ")'><span class='fas fa-eye'>" +
+   "</span>&nbsp;<span class='fas fa-edit'></span></button></td>" +
+   "<td><button onclick='confirmDelete(" + roundIndex + ")'>" +
+   "<span class='fas fa-trash'></span></button></td>";
+}
+
 
 //MENU BUTTON HANDLERS GO HERE
 
@@ -305,6 +393,8 @@ document.getElementById("logRoundItem").onclick = function(e) {
   document.getElementById("logRoundDiv").style.display = "block";
   //Change page title:
   document.getElementById("topBarTitle").textContent = "Log New Round";
+  //Set label of form button appropriately
+  document.getElementById("submitBtnLabel").textContent = "Save Round Data";
   //Set pageLocked to true, thus indicating that we're on a page that may only
   //be exited by clicking on the left arrow at top left
   pageLocked = true;
@@ -314,6 +404,28 @@ document.getElementById("logRoundItem").onclick = function(e) {
   //When pageLocked is true, the bottom bar buttons are disabled
   document.getElementById("bottomBar").classList.add("disabledButton");
 }
+
+//editRound: Event handler called when "View/Edit" button clicked in "My Rounds"
+//table. roundIndex indicates the index of the round that was clicked. Grab
+//the round data from local storage, fill it into the edit form and transition
+//to the view/edit round page.
+function editRound(roundIndex) {
+  //Grab appropriate round to view/edit from localStorage
+  let data = JSON.parse(localStorage.getItem("speedgolfUserData"));
+  let user = localStorage.getItem("userName");
+  
+  //Pre-populate form with round data
+  fillRoundForm(data[user].rounds[roundIndex]);
+
+  //Set local storage var to index of round being edited. This will allow us to
+  //save updated data to correct round when the user clicks "Update Round Data"
+  localStorage.setItem("roundIndex",roundIndex);
+
+  //Transition to round view/edit page with "Update" label for form submit button
+  document.getElementById("submitBtnLabel").textContent = "Update Round Data";
+  transitionToLockedPage("logRoundDiv","View/Edit Round");
+}
+
 
 //ADDITIONAL AUXILARY FUNCTIONS GO HERE
 //updateSGS --When the strokes, minutes or seconds fields are updated, we need
